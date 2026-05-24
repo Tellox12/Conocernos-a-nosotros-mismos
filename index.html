@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boton evasivo con IA</title>
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/brain.js/2.0.0-beta.24/browser.min.js"
+    onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/brain.js@2.0.0-beta.24/dist/browser.min.js';"
+  ></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101722;
+      --panel: rgba(23, 34, 48, 0.78);
+      --panel-border: rgba(255, 255, 255, 0.18);
+      --text: #f7fbff;
+      --muted: #b6c6d8;
+      --accent: #62f7c8;
+      --accent-2: #9ed8ff;
+      --danger: #ff6c9a;
+      --gold: #ffe27a;
+      --violet: #c9a7ff;
+      --shadow: rgba(98, 247, 200, 0.34);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 18%, rgba(98, 247, 200, 0.2), transparent 28%),
+        radial-gradient(circle at 82% 24%, rgba(158, 216, 255, 0.18), transparent 26%),
+        radial-gradient(circle at 74% 78%, rgba(255, 108, 154, 0.16), transparent 32%),
+        linear-gradient(145deg, #172233 0%, #0f1722 45%, #182436 100%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      cursor: crosshair;
+      user-select: none;
+      perspective: 900px;
+    }
+
+    .hud {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      z-index: 3;
+      display: grid;
+      gap: 12px;
+      width: min(760px, calc(100vw - 36px));
+      padding: 14px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.1), transparent 42%),
+        var(--panel);
+      box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(18px);
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+
+    .title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 0;
+      font-size: 0.92rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border: 1px solid rgba(98, 247, 200, 0.5);
+      border-radius: 999px;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .round-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .timer {
+      display: grid;
+      gap: 4px;
+      min-width: 120px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255, 226, 122, 0.36);
+      border-radius: 8px;
+      background:
+        linear-gradient(145deg, rgba(255, 226, 122, 0.16), rgba(255, 255, 255, 0.04)),
+        rgba(255, 255, 255, 0.07);
+      box-shadow:
+        0 12px 34px rgba(255, 226, 122, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }
+
+    .timer span {
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .timer strong {
+      color: var(--gold);
+      font-size: 2rem;
+      line-height: 0.95;
+      text-shadow: 0 0 22px rgba(255, 226, 122, 0.34);
+    }
+
+    .meter {
+      position: relative;
+      height: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .meter-fill {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--gold), var(--danger));
+      box-shadow: 0 0 24px rgba(98, 247, 200, 0.28);
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.07);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.1;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .banner {
+      position: fixed;
+      left: 50%;
+      top: 24px;
+      z-index: 4;
+      display: grid;
+      gap: 4px;
+      min-width: min(380px, calc(100vw - 48px));
+      padding: 14px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(255, 226, 122, 0.22), rgba(255, 108, 154, 0.16)),
+        rgba(18, 26, 36, 0.86);
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+      text-align: center;
+      transform: translate(-50%, -140%);
+      transition: transform 300ms ease, opacity 300ms ease;
+      opacity: 0;
+      pointer-events: none;
+      backdrop-filter: blur(18px);
+    }
+
+    .banner.show {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+
+    .banner strong {
+      color: var(--gold);
+      font-size: 1rem;
+      text-transform: uppercase;
+    }
+
+    .banner span {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    #arena {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #target {
+      position: fixed;
+      z-index: 2;
+      left: 50%;
+      top: 55%;
+      width: 142px;
+      height: 52px;
+      border: 0;
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 38%),
+        linear-gradient(135deg, #92ffd9 0%, #62f7c8 42%, #3ccda5 100%);
+      color: #07231c;
+      font-size: 0.98rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+      box-shadow:
+        0 9px 0 #16866e,
+        0 22px 42px var(--shadow),
+        0 36px 70px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -14px 24px rgba(13, 95, 77, 0.22);
+      transform: translate(-50%, -50%) rotateX(10deg) rotateY(-8deg);
+      transform-style: preserve-3d;
+      transition:
+        left 280ms cubic-bezier(0.2, 0.85, 0.18, 1),
+        top 280ms cubic-bezier(0.2, 0.85, 0.18, 1),
+        transform 160ms ease,
+        box-shadow 160ms ease;
+      cursor: pointer;
+    }
+
+    #target::before {
+      content: "";
+      position: absolute;
+      inset: 7px 12px auto 12px;
+      height: 13px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.08));
+      pointer-events: none;
+    }
+
+    #target::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      transform: translateZ(10px);
+      pointer-events: none;
+    }
+
+    #target:hover {
+      box-shadow:
+        0 7px 0 #16866e,
+        0 24px 56px rgba(98, 247, 200, 0.36),
+        0 40px 78px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.86),
+        inset 0 -14px 24px rgba(13, 95, 77, 0.18);
+      transform: translate(-50%, -53%) rotateX(14deg) rotateY(-4deg) scale(1.03);
+    }
+
+    #target.evading {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.64), transparent 36%),
+        linear-gradient(135deg, #ffe27a 0%, #ff8fb0 44%, #ff6c9a 100%);
+      box-shadow:
+        0 9px 0 #a63d61,
+        0 24px 58px rgba(255, 108, 154, 0.38),
+        0 40px 80px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -14px 24px rgba(117, 18, 52, 0.2);
+    }
+
+    .scanline {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 100% 42px, 54px 100%;
+      mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent);
+    }
+
+    @media (max-width: 620px) {
+      .hud {
+        bottom: 10px;
+        width: calc(100vw - 20px);
+        padding: 12px;
+      }
+
+      .stats {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .round-row {
+        grid-template-columns: 1fr;
+      }
+
+      .timer {
+        min-width: 0;
+      }
+
+      #target {
+        width: 126px;
+        height: 48px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="arena" aria-hidden="true"></canvas>
+  <div class="scanline" aria-hidden="true"></div>
+
+  <section class="hud" aria-label="Panel del juego">
+    <h1 class="title">
+      Boton evasivo
+      <span class="pill" id="aiStatus">IA: calentando</span>
+    </h1>
+    <div class="round-row">
+      <div class="meter" aria-hidden="true">
+        <div class="meter-fill" id="roundMeter"></div>
+      </div>
+      <div class="timer" aria-label="Tiempo restante">
+        <span>Tiempo</span>
+        <strong id="timer">1:00</strong>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <span>Puntuacion</span>
+        <strong id="score">0</strong>
+      </div>
+      <div class="stat">
+        <span>Intentos</span>
+        <strong id="attempts">0</strong>
+      </div>
+      <div class="stat">
+        <span>Radio</span>
+        <strong id="radius">110</strong>
+      </div>
+      <div class="stat">
+        <span>Mejor</span>
+        <strong id="best">0</strong>
+      </div>
+    </div>
+    <p class="hint">Ronda de 60 segundos: suma tantos clics como puedas antes de que la IA despierte por completo.</p>
+  </section>
+
+  <div class="banner" id="roundBanner" aria-live="polite">
+    <strong id="bannerTitle">Nueva ronda</strong>
+    <span id="bannerText">La IA vuelve a empezar tonta.</span>
+  </div>
+
+  <button id="target" type="button" aria-label="Atrapar boton">Atrápame</button>
+
+  <script>
+    const hud = document.querySelector(".hud");
+    const target = document.getElementById("target");
+    const scoreEl = document.getElementById("score");
+    const attemptsEl = document.getElementById("attempts");
+    const radiusEl = document.getElementById("radius");
+    const timerEl = document.getElementById("timer");
+    const bestEl = document.getElementById("best");
+    const roundMeterEl = document.getElementById("roundMeter");
+    const roundBanner = document.getElementById("roundBanner");
+    const bannerTitle = document.getElementById("bannerTitle");
+    const bannerText = document.getElementById("bannerText");
+    const aiStatusEl = document.getElementById("aiStatus");
+    const canvas = document.getElementById("arena");
+    const ctx = canvas.getContext("2d");
+
+    const POINTS_PER_SAMPLE = 8;
+    const MAX_TRAIL = 72;
+    const MAX_TRAINING_SAMPLES = 120;
+    const TARGET_W = 142;
+    const TARGET_H = 52;
+    const EDGE_PADDING = 18;
+    const ROUND_DURATION = 60000;
+    const FULL_POWER_TIME = ROUND_DURATION;
+
+    let score = 0;
+    let bestScore = 0;
+    let attempts = 0;
+    let reactionRadius = 38;
+    let escapeDuration = 850;
+    let lastEvadeAt = 0;
+    let lastDifficultyPaintAt = 0;
+    let lastSecondShown = -1;
+    let gameStartedAt = performance.now();
+    let targetPos = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.55 };
+    let predictedPoint = { x: targetPos.x, y: targetPos.y };
+    let trail = [];
+    let trainingData = [];
+    let isBrainReady = false;
+    let usingFallbackNetwork = false;
+    let net = null;
+    const sparks = Array.from({ length: 46 }, (_, index) => ({
+      x: (index * 193) % 1000,
+      y: (index * 317) % 1000,
+      size: 1.2 + (index % 4) * 0.55,
+      speed: 0.25 + (index % 7) * 0.08,
+      hue: index % 3
+    }));
+
+    class FallbackNeuralNetwork {
+      constructor() {
+        this.samples = [];
+      }
+
+      train(data) {
+        this.samples = data.slice(-90);
+      }
+
+      run(input) {
+        if (this.samples.length === 0) {
+          return { nextX: 0.5, nextY: 0.5 };
+        }
+
+        const keys = Object.keys(input);
+        const closest = this.samples
+          .map(sample => {
+            const error = keys.reduce((sum, key) => {
+              const diff = input[key] - sample.input[key];
+              return sum + diff * diff;
+            }, 0);
+
+            return {
+              weight: 1 / (0.002 + error),
+              output: sample.output
+            };
+          })
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 6);
+
+        const weightTotal = closest.reduce((sum, sample) => sum + sample.weight, 0);
+        return closest.reduce(
+          (result, sample) => ({
+            nextX: result.nextX + sample.output.nextX * (sample.weight / weightTotal),
+            nextY: result.nextY + sample.output.nextY * (sample.weight / weightTotal)
+          }),
+          { nextX: 0, nextY: 0 }
+        );
+      }
+    }
+
+    function getLearningLevel() {
+      const elapsedRatio = getRoundProgress();
+      const timeGrowth = Math.pow(elapsedRatio, 1.78);
+      const sampleGrowth = Math.min(0.12, Math.max(0, trainingData.length - 5) * 0.003);
+      const scoreGrowth = Math.min(0.1, score * 0.012);
+      const earlyBrake = 0.12 + elapsedRatio * 0.88;
+      return clamp(timeGrowth + (sampleGrowth + scoreGrowth) * earlyBrake, 0, 1);
+    }
+
+    function getRoundProgress() {
+      return clamp((performance.now() - gameStartedAt) / ROUND_DURATION, 0, 1);
+    }
+
+    function getRemainingMs() {
+      return Math.max(0, ROUND_DURATION - (performance.now() - gameStartedAt));
+    }
+
+    function formatTime(ms) {
+      const totalSeconds = Math.ceil(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function showBanner(title, text) {
+      bannerTitle.textContent = title;
+      bannerText.textContent = text;
+      roundBanner.classList.add("show");
+      window.setTimeout(() => roundBanner.classList.remove("show"), 1800);
+    }
+
+    function resetRound(showMessage = true) {
+      if (score > bestScore) {
+        bestScore = score;
+      }
+
+      score = 0;
+      attempts = 0;
+      reactionRadius = 38;
+      escapeDuration = 850;
+      lastEvadeAt = 0;
+      lastDifficultyPaintAt = 0;
+      lastSecondShown = -1;
+      gameStartedAt = performance.now();
+      predictedPoint = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.55 };
+      trail = [];
+      trainingData = [];
+      isBrainReady = false;
+      usingFallbackNetwork = false;
+      net = null;
+
+      placeTarget(window.innerWidth * 0.5, window.innerHeight * 0.56, true);
+      updateDifficulty(true);
+
+      if (showMessage) {
+        showBanner("Nueva ronda", bestScore > 0 ? `Mejor puntuacion: ${bestScore}` : "La IA vuelve a empezar tonta.");
+      }
+    }
+
+    function makeNetwork() {
+      if (!window.brain) {
+        usingFallbackNetwork = true;
+        aiStatusEl.textContent = "IA: local";
+        return new FallbackNeuralNetwork();
+      }
+
+      usingFallbackNetwork = false;
+      return new brain.NeuralNetwork({
+        hiddenLayers: [18, 12],
+        activation: "sigmoid",
+        learningRate: 0.03
+      });
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function normalizeX(x) {
+      return clamp(x / window.innerWidth, 0, 1);
+    }
+
+    function normalizeY(y) {
+      return clamp(y / window.innerHeight, 0, 1);
+    }
+
+    function safeTargetBounds() {
+      const halfW = target.offsetWidth ? target.offsetWidth / 2 : TARGET_W / 2;
+      const halfH = target.offsetHeight ? target.offsetHeight / 2 : TARGET_H / 2;
+      return {
+        minX: EDGE_PADDING + halfW,
+        maxX: window.innerWidth - EDGE_PADDING - halfW,
+        minY: EDGE_PADDING + halfH,
+        maxY: window.innerHeight - EDGE_PADDING - halfH
+      };
+    }
+
+    function getHudAvoidRect() {
+      const rect = hud.getBoundingClientRect();
+      return {
+        left: rect.left - 18,
+        right: rect.right + 18,
+        top: rect.top - 18,
+        bottom: rect.bottom + 18
+      };
+    }
+
+    function pointOverlapsHud(point) {
+      const rect = getHudAvoidRect();
+      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    }
+
+    function placeTarget(x, y, instant = false) {
+      const bounds = safeTargetBounds();
+      targetPos.x = clamp(x, bounds.minX, bounds.maxX);
+      targetPos.y = clamp(y, bounds.minY, bounds.maxY);
+
+      if (pointOverlapsHud(targetPos)) {
+        const rect = getHudAvoidRect();
+        const halfH = target.offsetHeight ? target.offsetHeight / 2 : TARGET_H / 2;
+        const aboveHud = rect.top - halfH - EDGE_PADDING;
+        targetPos.y = aboveHud >= bounds.minY ? aboveHud : bounds.minY;
+      }
+
+      if (instant) {
+        target.style.transitionDuration = "0ms";
+      } else {
+        target.style.transitionDuration = `${escapeDuration}ms`;
+      }
+
+      target.style.left = `${targetPos.x}px`;
+      target.style.top = `${targetPos.y}px`;
+
+      if (instant) {
+        requestAnimationFrame(() => {
+          target.style.transitionDuration = `${escapeDuration}ms`;
+        });
+      }
+    }
+
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      placeTarget(targetPos.x, targetPos.y, true);
+    }
+
+    function recordPoint(event) {
+      const now = performance.now();
+      const previous = trail[trail.length - 1];
+      const dt = previous ? Math.max(1, now - previous.t) : 16;
+      const vx = previous ? (event.clientX - previous.x) / dt : 0;
+      const vy = previous ? (event.clientY - previous.y) / dt : 0;
+      const speed = Math.hypot(vx, vy);
+
+      trail.push({
+        x: event.clientX,
+        y: event.clientY,
+        t: now,
+        vx,
+        vy,
+        speed
+      });
+
+      if (trail.length > MAX_TRAIL) {
+        trail.shift();
+      }
+    }
+
+    function getRecentPoints(count) {
+      if (trail.length === 0) return [];
+      const points = trail.slice(-count);
+      while (points.length < count) {
+        points.unshift(points[0]);
+      }
+      return points;
+    }
+
+    function buildInput(points) {
+      const input = {};
+
+      points.forEach((point, index) => {
+        // Brain.js recibe entradas numericas normalizadas entre 0 y 1.
+        // Para cada uno de los ultimos 8 puntos usamos:
+        // x/y = posicion del cursor normalizada por el tamano de la ventana.
+        // vx/vy = direccion de movimiento normalizada a un rango aproximado.
+        // speed = rapidez del cursor, recortada para evitar valores extremos.
+        input[`x${index}`] = normalizeX(point.x);
+        input[`y${index}`] = normalizeY(point.y);
+        input[`vx${index}`] = clamp((point.vx + 2) / 4, 0, 1);
+        input[`vy${index}`] = clamp((point.vy + 2) / 4, 0, 1);
+        input[`s${index}`] = clamp(point.speed / 2, 0, 1);
+      });
+
+      return input;
+    }
+
+    function addTrainingSample() {
+      if (trail.length < 2) return;
+
+      const points = getRecentPoints(POINTS_PER_SAMPLE);
+      const last = points[points.length - 1];
+      const previous = points[points.length - 2];
+      const dt = Math.max(1, last.t - previous.t);
+      const projectedX = last.x + ((last.x - previous.x) / dt) * 90;
+      const projectedY = last.y + ((last.y - previous.y) / dt) * 90;
+
+      trainingData.push({
+        input: buildInput(points),
+        // El output esperado tambien esta normalizado:
+        // nextX/nextY representan la proxima coordenada probable del cursor.
+        output: {
+          nextX: normalizeX(projectedX),
+          nextY: normalizeY(projectedY)
+        }
+      });
+
+      if (trainingData.length > MAX_TRAINING_SAMPLES) {
+        trainingData.shift();
+      }
+    }
+
+    function trainNetwork() {
+      if (!net) {
+        net = makeNetwork();
+      }
+
+      if (!net || trainingData.length < 3) {
+        return;
+      }
+
+      const learningLevel = getLearningLevel();
+
+      if (usingFallbackNetwork) {
+        net.train(trainingData);
+      } else {
+        net.train(trainingData, {
+          iterations: Math.round(18 + learningLevel * 34),
+          errorThresh: 0.018 - learningLevel * 0.006,
+          log: false,
+          learningRate: 0.035 - learningLevel * 0.01
+        });
+      }
+
+      isBrainReady = true;
+      aiStatusEl.textContent = learningLevel < 0.18 ? "IA: tonta" : learningLevel < 0.48 ? "IA: lenta" : learningLevel < 0.78 ? "IA: aprendiendo" : "IA: precisa";
+    }
+
+    function fallbackPrediction(points) {
+      const last = points[points.length - 1];
+      const previous = points[points.length - 2] || last;
+      const learningLevel = getLearningLevel();
+      const projection = 0.7 + learningLevel * 6.8;
+      return {
+        x: clamp(last.x + (last.x - previous.x) * projection, 0, window.innerWidth),
+        y: clamp(last.y + (last.y - previous.y) * projection, 0, window.innerHeight)
+      };
+    }
+
+    function predictNextPoint() {
+      const points = getRecentPoints(POINTS_PER_SAMPLE);
+      if (points.length < 2) {
+        return predictedPoint;
+      }
+
+      if (!isBrainReady || !net) {
+        predictedPoint = fallbackPrediction(points);
+        return predictedPoint;
+      }
+
+      const learningLevel = getLearningLevel();
+      const result = net.run(buildInput(points));
+      const rawPrediction = {
+        x: clamp((result.nextX || 0.5) * window.innerWidth, 0, window.innerWidth),
+        y: clamp((result.nextY || 0.5) * window.innerHeight, 0, window.innerHeight)
+      };
+      const fallback = fallbackPrediction(points);
+      const confidence = clamp(0.06 + learningLevel * 0.94, 0, 1);
+      const wobble = (1 - learningLevel) * 180;
+
+      predictedPoint = {
+        x: clamp(rawPrediction.x * confidence + fallback.x * (1 - confidence) + (Math.random() - 0.5) * wobble, 0, window.innerWidth),
+        y: clamp(rawPrediction.y * confidence + fallback.y * (1 - confidence) + (Math.random() - 0.5) * wobble, 0, window.innerHeight)
+      };
+      return predictedPoint;
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function chooseEscapePosition(cursor, predicted) {
+      const bounds = safeTargetBounds();
+      const candidates = [];
+      const learningLevel = getLearningLevel();
+      const columns = learningLevel < 0.38 ? 3 : 6;
+      const rows = learningLevel < 0.38 ? 3 : 5;
+
+      for (let ix = 0; ix < columns; ix += 1) {
+        for (let iy = 0; iy < rows; iy += 1) {
+          const x = bounds.minX + ((bounds.maxX - bounds.minX) * ix) / (columns - 1);
+          const y = bounds.minY + ((bounds.maxY - bounds.minY) * iy) / (rows - 1);
+          candidates.push({ x, y });
+        }
+      }
+
+      for (let i = 0; i < 5 + Math.round(learningLevel * 14); i += 1) {
+        candidates.push({
+          x: bounds.minX + Math.random() * (bounds.maxX - bounds.minX),
+          y: bounds.minY + Math.random() * (bounds.maxY - bounds.minY)
+        });
+      }
+
+      return candidates
+        .map(candidate => {
+          const predictedDistance = distance(candidate, predicted);
+          const cursorDistance = distance(candidate, cursor);
+          const currentDistance = distance(candidate, targetPos);
+          const hudPenalty = pointOverlapsHud(candidate) ? 1800 : 0;
+          const edgePenalty = Math.min(
+            candidate.x - bounds.minX,
+            bounds.maxX - candidate.x,
+            candidate.y - bounds.minY,
+            bounds.maxY - candidate.y
+          );
+
+          return {
+            ...candidate,
+            score:
+              predictedDistance * (0.28 + learningLevel * 1.18) +
+              cursorDistance * (0.28 + learningLevel * 0.92) -
+              currentDistance * (0.86 - learningLevel * 0.55) +
+              edgePenalty * 0.12 +
+              Math.random() * (1 - learningLevel) * 420 -
+              hudPenalty
+          };
+        })
+        .sort((a, b) => b.score - a.score)[0];
+    }
+
+    function evade(cursor) {
+      const now = performance.now();
+      const learningLevel = getLearningLevel();
+      const cooldown = Math.max(80, escapeDuration * (1.18 - learningLevel * 0.52));
+      if (now - lastEvadeAt < cooldown) return;
+
+      const panicDistance = 12 + learningLevel * reactionRadius * 0.52;
+      const evasionChance = 0.08 + learningLevel * 0.89;
+      const panicMode = learningLevel > 0.34 && distance(cursor, targetPos) <= panicDistance;
+      if (!panicMode && Math.random() > evasionChance) {
+        return;
+      }
+
+      lastEvadeAt = now;
+      const predicted = predictNextPoint();
+      const chosen = chooseEscapePosition(cursor, predicted);
+      const escapePower = 0.16 + learningLevel * 0.84;
+      const dumbMoveTowardCursor = learningLevel < 0.22 && Math.random() < 0.34;
+      const destination = dumbMoveTowardCursor ? cursor : chosen;
+      const next = {
+        x: targetPos.x + (destination.x - targetPos.x) * escapePower,
+        y: targetPos.y + (destination.y - targetPos.y) * escapePower
+      };
+
+      target.classList.add("evading");
+      placeTarget(next.x, next.y);
+      window.setTimeout(() => target.classList.remove("evading"), escapeDuration + 80);
+    }
+
+    function updateDifficulty(force = false) {
+      const now = performance.now();
+      const learningLevel = getLearningLevel();
+      const remainingMs = getRemainingMs();
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
+      reactionRadius = Math.round(38 + learningLevel * 270);
+      escapeDuration = Math.round(860 - learningLevel * 755);
+      target.style.transitionDuration = `${escapeDuration}ms`;
+      roundMeterEl.style.transform = `scaleX(${getRoundProgress()})`;
+
+      if (remainingMs <= 0) {
+        resetRound(true);
+        return;
+      }
+
+      if (!force && now - lastDifficultyPaintAt < 180 && remainingSeconds === lastSecondShown && attempts > 0) {
+        return;
+      }
+
+      lastDifficultyPaintAt = now;
+      lastSecondShown = remainingSeconds;
+      scoreEl.textContent = score;
+      attemptsEl.textContent = attempts;
+      radiusEl.textContent = Math.round(reactionRadius);
+      timerEl.textContent = formatTime(remainingMs);
+      bestEl.textContent = bestScore;
+      aiStatusEl.textContent = learningLevel < 0.08 ? "IA: tonta" : learningLevel < 0.28 ? "IA: distraida" : learningLevel < 0.58 ? "IA: lenta" : learningLevel < 0.84 ? "IA: aprendiendo" : "IA: precisa";
+    }
+
+    function registerAttempt(wasHit) {
+      attempts += 1;
+      addTrainingSample();
+      trainNetwork();
+
+      if (wasHit) {
+        score += 1;
+        const randomCornerBias = Math.random() > 0.5 ? 0.18 : 0.82;
+        placeTarget(window.innerWidth * randomCornerBias, EDGE_PADDING + Math.random() * window.innerHeight * 0.7);
+      }
+
+      updateDifficulty(true);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      const learningLevel = getLearningLevel();
+      updateDifficulty();
+      const now = performance.now();
+
+      sparks.forEach((spark, index) => {
+        const x = (spark.x / 1000) * window.innerWidth;
+        const y = ((spark.y / 1000) * window.innerHeight + now * spark.speed * 0.018) % window.innerHeight;
+        const pulse = 0.45 + Math.sin(now * 0.002 + index) * 0.28;
+        ctx.beginPath();
+        ctx.arc(x, y, spark.size + learningLevel * 1.1, 0, Math.PI * 2);
+        ctx.fillStyle = spark.hue === 0
+          ? `rgba(98, 247, 200, ${pulse * 0.22})`
+          : spark.hue === 1
+            ? `rgba(158, 216, 255, ${pulse * 0.18})`
+            : `rgba(255, 226, 122, ${pulse * 0.16})`;
+        ctx.fill();
+      });
+
+      const glow = ctx.createRadialGradient(targetPos.x, targetPos.y, 4, targetPos.x, targetPos.y, reactionRadius * 1.45);
+      glow.addColorStop(0, `rgba(98, 247, 200, ${0.12 + learningLevel * 0.08})`);
+      glow.addColorStop(1, "rgba(98, 247, 200, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(targetPos.x, targetPos.y, reactionRadius * 1.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (trail.length > 1) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = `rgba(98, 247, 200, ${0.26 + learningLevel * 0.22})`;
+        ctx.shadowColor = "rgba(98, 247, 200, 0.48)";
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        trail.forEach((point, index) => {
+          if (index === 0) ctx.moveTo(point.x, point.y);
+          else ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      const predicted = predictedPoint;
+      ctx.beginPath();
+      ctx.arc(predicted.x, predicted.y, 7 + learningLevel * 5, 0, Math.PI * 2);
+      ctx.fillStyle = isBrainReady ? `rgba(255, 108, 154, ${0.48 + learningLevel * 0.34})` : "rgba(158, 216, 255, 0.48)";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(targetPos.x, targetPos.y, reactionRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 226, 122, ${0.08 + learningLevel * 0.14})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      requestAnimationFrame(draw);
+    }
+
+    window.addEventListener("pointermove", event => {
+      recordPoint(event);
+      const cursor = { x: event.clientX, y: event.clientY };
+      predictNextPoint();
+
+      if (distance(cursor, targetPos) <= reactionRadius) {
+        evade(cursor);
+      }
+    });
+
+    window.addEventListener("click", () => {
+      registerAttempt(false);
+    });
+
+    target.addEventListener("click", event => {
+      event.stopPropagation();
+      registerAttempt(true);
+    });
+
+    window.addEventListener("resize", resizeCanvas);
+
+    resizeCanvas();
+    resetRound(false);
+    draw();
+  </script>
+</body>
+</html>
